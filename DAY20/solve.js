@@ -71,7 +71,8 @@ class Tile {
     });
   }
   canMatchEdge(secondTile) {
-    const matchingOrientations = secondTile.encodedOrientations;
+    const matchingOrientations = secondTile.encodedOrientations.slice(0, 1);
+    console.log(matchingOrientations.length);
     for (const o1 of this.encodedOrientations) {
       for (const o2 of matchingOrientations) {
         if (o1["top"] == o2["bottom"]) {
@@ -116,12 +117,12 @@ class Tile {
       this.orientations.push(rotate(flippedX));
     }
     // flip along Y AXIS
-    const flippedY = flipY(this.binaryData);
-    idx = 4;
-    while (idx > 0) {
-      idx -= 1;
-      this.orientations.push(rotate(flippedY));
-    }
+    // const flippedY = flipY(this.binaryData);
+    // idx = 4;
+    // while (idx > 0) {
+    //   idx -= 1;
+    //   this.orientations.push(rotate(flippedY));
+    // }
     //console.log(this.orientations.length);
     this.encodeEdges();
   }
