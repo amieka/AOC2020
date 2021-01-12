@@ -8,14 +8,13 @@ const edgeKeys = {
   RIGHT: "right",
 };
 const flipX = (data) => {
-  return data.reverse();
+  let ret = data;
+  return ret.reverse();
 };
 const flipY = (data) => {
-  let flip = [];
-  for (const row of data) {
-    flip.push(row.reverse());
-  }
-  return flip;
+  return data.reduce((result, curVal) => {
+    return (result || []).concat([curVal.reverse()]);
+  }, []);
 };
 const rotate = (data) => {
   let ret = data[0].map((val, index) =>
@@ -38,50 +37,52 @@ class Tile {
     this.tileId = tileId;
     this.data = data;
     this.binaryData = [];
-    this.orientations = [];
     this.encodedOrientations = [];
     this.taken = false;
     this.tranform();
   }
-  encodeEdges() {
-    if (this.orientations.length === 0) {
+
+  encodeEdges(data) {
+    if (data.length === 0) {
       return;
     }
-    //let edges = {};
-    var that = this;
-    this.orientations.forEach((orientation) => {
-      let top = [],
-        bottom = [],
-        right = [],
-        left = [],
-        n = orientation.length;
 
-      for (const x in orientation) {
-        top.push(orientation[0][x]);
-        bottom.push(orientation[n - 1][x]);
-        right.push(orientation[x][n - 1]);
-        left.push(orientation[x][0]);
-      }
-      that.encodedOrientations.push({
-        top: encode(top),
-        bottom: encode(bottom),
-        left: encode(left),
-        right: encode(right),
-      });
-    });
+    let top = [],
+      bottom = [],
+      right = [],
+      left = [],
+      n = data.length;
+
+    for (const x in data) {
+      top.push(data[0][x]);
+      bottom.push(data[n - 1][x]);
+      right.push(data[x][n - 1]);
+      left.push(data[x][0]);
+    }
+    // return {
+    //   top: encode(top),
+    //   bottom: encode(bottom),
+    //   left: encode(left),
+    //   right: encode(right),
+    // };
+    return {
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+    };
   }
   canMatchEdge(secondTile) {
-    const matchingOrientations = secondTile.encodedOrientations.slice(0, 1);
-    console.log(matchingOrientations.length);
+    const matchingOrientations = secondTile.encodedOrientations;
     for (const o1 of this.encodedOrientations) {
       for (const o2 of matchingOrientations) {
-        if (o1["top"] == o2["bottom"]) {
+        if (o1["top"] === o2["bottom"]) {
           return edgeKeys.BOTTOM;
-        } else if (o1["left"] == o2["right"]) {
+        } else if (o1["left"] === o2["right"]) {
           return edgeKeys.RIGHT;
-        } else if (o1["right"] == o2["left"]) {
+        } else if (o1["right"] === o2["left"]) {
           return edgeKeys.LEFT;
-        } else if (o1["bottom"] == o2["top"]) {
+        } else if (o1["bottom"] === o2["top"]) {
           return edgeKeys.TOP;
         }
       }
@@ -102,29 +103,26 @@ class Tile {
       this.binaryData.push(cols);
     }
     // copy the original data
-    this.orientations.push(this.binaryData);
+    //this.encodedOrientations.push(this.encodeEdges(this.binaryData));
 
     let idx = 4;
+    let temp = this.binaryData;
     while (idx > 0) {
       idx -= 1;
-      this.orientations.push(rotate(this.binaryData));
+      let t = rotate(temp);
+      temp = t;
+      this.encodedOrientations.push(this.encodeEdges(t));
     }
+
     // flip along X AXIS
-    const flippedX = flipX(this.binaryData);
+    let flippedY = flipY(this.binaryData);
     idx = 4;
     while (idx > 0) {
       idx -= 1;
-      this.orientations.push(rotate(flippedX));
+      let t = rotate(flippedY);
+      flippedY = t;
+      this.encodedOrientations.push(this.encodeEdges(t));
     }
-    // flip along Y AXIS
-    // const flippedY = flipY(this.binaryData);
-    // idx = 4;
-    // while (idx > 0) {
-    //   idx -= 1;
-    //   this.orientations.push(rotate(flippedY));
-    // }
-    //console.log(this.orientations.length);
-    this.encodeEdges();
   }
 }
 
@@ -158,8 +156,7 @@ class Board {
         }
       }
       if (matches == 2) {
-        //firstTile.taken = true;
-        this.tilesData[firstTile.tileId].taken = true;
+        firstTile.taken = true;
         ans *= parseInt(firstTile.tileId);
         ret.push({
           [firstTile.tileId]: corners,
@@ -196,12 +193,15 @@ const sample = () => {
     [4, 5, 6],
     [7, 8, 9],
   ];
-  rotate(sample);
-  flipX(sample);
+  //rotate(sample);
+  //flipX(sample);
+  y = flipY(sample);
+  console.log(y);
 };
 
 const solve = () => {
   let tiles = readInput();
+  console.log(tiles);
   let board = new Board(tiles);
   const ret = board.search();
   console.log(ret[0]);
@@ -209,3 +209,4 @@ const solve = () => {
 };
 
 solve();
+//sample();
