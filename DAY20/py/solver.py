@@ -6,6 +6,8 @@ import threading
 from enum import Enum
 from functools import lru_cache
 
+__DEBUG__ = True
+
 
 class CornerType(Enum):
     TOP = "top"
@@ -26,18 +28,25 @@ class Colors:
     UNDERLINE = "\033[4m"
     MAGENTA = "\035[47m"
     RED = "\031[47m"
-    LGRAY = "\037[40m"
+    LGRAY = "\033[37m"
+    ORANGE = "\033[33m"
 
 
-def print_grid(grid, color):
+def print_grid(grid, color=None):
     if not grid:
         print("xxxxxxxxxx")
         return
     for row in grid:
         if isinstance(row, list):
-            print(f"{color}{''.join(row)}{Colors.ENDC}")
+            if color:
+                print(f"{color}{''.join(row)}{Colors.ENDC}")
+            else:
+                print("".join(row))
         else:
-            print(f"{color}{row}{Colors.ENDC}")
+            if color:
+                print(f"{color}{row}{Colors.ENDC}")
+            else:
+                print(row)
 
 
 class Tile:
@@ -156,8 +165,9 @@ class Tile:
                 full_grid, orientation_data, [start_r, end_r, start_c, end_c]
             )
             # print_grid(orientation_data, Colors.OKGREEN)
-            print_grid(full_grid, Colors.OKGREEN)
-            time.sleep(0.1)
+            # print_grid(full_grid, Colors.OKGREEN)
+            print_grid(full_grid)
+            time.sleep(0.3)
 
     def can_place_left(self, r, c, visited, tiles_pair):
         if self.is_valid(r, c - 1) and visited[r][c - 1] != -1:
@@ -167,7 +177,8 @@ class Tile:
             if self.tile_id != second_tile_id:
                 for o1 in self.orientations:
                     orientation_id += 1
-                    self.debug_(orientation_id, visited, tiles_pair, [r, c])
+                    if __DEBUG__:
+                        self.debug_(orientation_id, visited, tiles_pair, [r, c])
                     for o2 in matching_orientations:
                         if o1.get("left") == o2.get("right"):
                             return True
@@ -181,7 +192,8 @@ class Tile:
             if self.tile_id != second_tile_id:
                 for o1 in self.orientations:
                     orientation_id += 1
-                    self.debug_(orientation_id, visited, tiles_pair, [r, c])
+                    if __DEBUG__:
+                        self.debug_(orientation_id, visited, tiles_pair, [r, c])
                     for o2 in matching_orientations:
                         if o1.get("up") == o2.get("down"):
                             return True
@@ -273,9 +285,28 @@ def fill_grid_by_pos(grid, data, pos):
         j = 0
         for c in range(c_start, c_end):
             if "#" in data[i][j] or "." in data[i][j]:
-                grid[r][c] = data[i][j]
+                # colorize the corner edges
+                # up.append(data[0][idx])
+                # down.append(data[edge_length - 1][idx])
+                # right.append(data[idx][edge_length - 1])
+                # left.append(data[idx][0])
+                colored_data = ""
+                if r == 0:
+                    grid[r][c] = f"{Colors.ORANGE}{data[i][j]}{Colors.ENDC}"
+                elif r == 9:
+                    grid[r][c] = f"{Colors.ORANGE}{data[i][j]}{Colors.ENDC}"
+                elif c == 0:
+                    grid[r][c] = f"{Colors.ORANGE}{data[i][j]}{Colors.ENDC}"
+                elif c == 9:
+                    grid[r][c] = f"{Colors.ORANGE}{data[i][j]}{Colors.ENDC}"
+                else:
+                    grid[r][c] = f"{Colors.OKGREEN}{data[i][j]}{Colors.ENDC}"
             else:
-                grid[r][c] = "#" if data[i][j] == "1" else "."
+                grid[r][c] = (
+                    f"{Colors.OKBLUE}#{Colors.ENDC}"
+                    if data[i][j] == "1"
+                    else f"{Colors.OKBLUE}.{Colors.ENDC}"
+                )
             j += 1
         i += 1
 
@@ -335,7 +366,7 @@ def read_input():
 
         board.solve(0, 0)
         print(board.layout)
-        print_grid_generic(board.layout, board.tiles)
+        # print_grid_generic(board.layout, board.tiles)
     except FileNotFoundError as file_not_found_error:
         print(f"file not found error {file_not_found_error}")
     except Exception as exception:
