@@ -40,7 +40,18 @@ class Tile:
         self.orientation_id = orientation_id
         self.tile_id = tile_id
         self.raw_data = None
+        self.block_size = 10
+        self.trimmed_data = [
+            ["."] * (self.block_size - 2) for _ in range(self.block_size - 2)
+        ]
         self.corners = {}
+
+    def trim_corners(self):
+        block_size = 10
+        data = self.raw_data
+        for r in range(1, block_size - 1):
+            for c in range(1, block_size - 1):
+                self.trimmed_data[r - 1][c - 1] = data[r][c]
 
     def update(self, data):
         self.raw_data = data
