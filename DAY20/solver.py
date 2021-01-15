@@ -282,7 +282,7 @@ class Board:
 
     def debug_print(self, data, r, c):
         if not __DEBUG__:
-            pass
+            return 
         self.fill_grid(self.visited)
         block_size = 10
         start_r, start_c = r * block_size, c * block_size
