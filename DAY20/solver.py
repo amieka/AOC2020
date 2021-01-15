@@ -290,10 +290,13 @@ class Board:
         self.fill_grid_by_pos(
             self.filled_grid, data, [start_r, end_r, start_c, end_c]
         )
-        # Reference : https://en.wikipedia.org/wiki/ANSI_escape_code
-        # Composed of 2 parts
-        # First: 2 J (indicates clearing the entire screen) 
-        # Second: 1 H puts the cursor back on row 1
+        """
+            # Clears the console
+            # Reference : https://en.wikipedia.org/wiki/ANSI_escape_code
+            # Composed of 2 parts
+            # First: 2 J (indicates clearing the entire screen) 
+            # Second: 1 H puts the cursor back on row 1
+        """
         print("\033[2J\033[1;1H")
         self.print_grid(self.filled_grid)
         time.sleep(0.1)
