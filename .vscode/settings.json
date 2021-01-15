@@ -1,8 +1,19 @@
 {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "[javascript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "python.formatting.provider": "black",
+  "python.formatting.blackArgs": ["--line-length", "80"],
+  "[python]": {
       "editor.formatOnPaste": true,
+      "editor.formatOnSave": true
+  },
+  "[yaml]": {
+      "editor.tabSize": 2,
+      "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+      },
       "editor.formatOnSave": true,
-    }
+  },
+  "python.pythonPath": "bin/python"
 }
