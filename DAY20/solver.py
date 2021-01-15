@@ -35,23 +35,6 @@ def ColoredText(color: Colors, text: str):
     return f"{color}{text}{Colors.ENDC}"
 
 
-def print_grid(grid, color=None):
-    if not grid:
-        print("xxxxxxxxxx")
-        return
-    for row in grid:
-        if isinstance(row, list):
-            if color:
-                print(f"{color}{''.join(row)}{Colors.ENDC}")
-            else:
-                print("".join(row))
-        else:
-            if color:
-                print(f"{color}{row}{Colors.ENDC}")
-            else:
-                print(row)
-
-
 class Tile:
     def __init__(self, tile_id, orientation_id):
         self.orientation_id = orientation_id
