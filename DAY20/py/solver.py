@@ -5,8 +5,9 @@ import time
 import threading
 from enum import Enum
 from functools import lru_cache
+from math import sqrt
 
-__DEBUG__ = True
+__DEBUG__ = False
 
 
 class CornerType(Enum):
@@ -50,73 +51,37 @@ def print_grid(grid, color=None):
 
 
 class Tile:
-    def __init__(self, tile_id):
+    def __init__(self, tile_id, orientation_id):
+        self.orientation_id = orientation_id
         self.tile_id = tile_id
-        self.content = []
-        self.raw_data = []
-        self.transformations = {}
-        self.orientations = []
-        self.taken = False
+        self.raw_data = None
+        self.corners = {}
+
+    def update(self, data):
+        self.raw_data = data
+
+    @property
+    def orientations(self):
+        return self.corners
 
     @property
     def grid_lines(self):
-        return self.content
+        return self.raw_data
 
-    def update(self, content):
-        self.raw_data = content
-        self.to_bitmask(content)
-        self.transform()
-
-    def rotate90(self, data, clockwise=True):
-        if not data:
-            return []
-
-        ret = []
-        rows = list(zip(*data[::-1]))
-        if not clockwise:
-            for r1 in rows[::-1]:
-                ret.append("".join(r1[::-1]))
-        else:
-            for r in rows:
-                ret.append("".join(r))
-
+    def rotate90(self):
+        rows, ret = list(zip(*self.raw_data[::-1])), []
+        for r in rows[::-1]:
+            ret.append("".join(r[::-1]))
         return ret
 
-    def flip_v(self, data, vertical=True):
+    def flip_v(self):
         ret = []
-        if vertical:
-            for row in data:
-                ret.append(row[::-1])
-        else:
-            return data[::-1]
+        for row in self.raw_data:
+            ret.append(row[::-1])
         return ret
 
-    def compute_checksum(self, row):
-        checksum, idx = 0, 0
-        # compresses 1101101000
-        # into 872
-        for data in row[::-1]:
-            checksum += int(data) << idx
-            idx += 1
-        return checksum
-
-    def to_bitmask(self, content):
-        masks = []
-        # converts ##.##.#...
-        # into a binary string
-        # 1101101000
-        for row in content:
-            cols = []
-            for c in row:
-                if c == ".":
-                    cols.append("0")
-                else:
-                    cols.append("1")
-            masks.append("".join(cols))
-        self.content = masks
-        return masks
-
-    def edge(self, data):
+    def update_corners(self, data):
+        # print(data)
         edge_length = len(data[0])
         up, down, left, right = [], [], [], []
         for idx in range(edge_length):
@@ -126,101 +91,99 @@ class Tile:
             left.append(data[idx][0])
 
         return {
-            "up": self.compute_checksum(up),
-            "down": self.compute_checksum(down),
-            "right": self.compute_checksum(right),
-            "left": self.compute_checksum(left),
+            "up": "".join(up),
+            "down": "".join(down),
+            "right": "".join(right),
+            "left": "".join(left),
         }
 
-    def transform(self):
-        # append the original orientation as is
-        # original.append(self.edge(self.content))
-        # self.orientations.append(self.edge(self.content))
-
-        r_content = self.content
-        r_original = self.raw_data
-        for i in range(4):
-            t, t1 = self.rotate90(r_content), self.rotate90(r_original)
-            r_content, r_original = t, t1
-            self.orientations.append(self.edge(t))
-            self.transformations[i] = t1
-
-        f_content = self.flip_v(self.content)
-        f_original = self.flip_v(self.raw_data)
-        for i in range(4):
-            t, t1 = self.rotate90(f_content), self.rotate90(f_original)
-            f_content, f_original = t, t1
-            self.orientations.append(self.edge(t))
-            self.transformations[i + 4 + 1] = t1
-
-    def debug_(self, orientation_id, visited, tiles_pair, pos):
-        if self.transformations.get(orientation_id) is not None:
-            orientation_data = self.transformations.get(orientation_id)
-            # reset terminal
-            print("\033[2J\033[1;1H")
-            full_grid = fill_grid_generic(visited, tiles_pair)
-            start_r, start_c = pos[0] * 10, pos[1] * 10
-            end_r, end_c = start_r + 10, start_c + 10
-            fill_grid_by_pos(
-                full_grid, orientation_data, [start_r, end_r, start_c, end_c]
-            )
-            # print_grid(orientation_data, Colors.OKGREEN)
-            # print_grid(full_grid, Colors.OKGREEN)
-            print_grid(full_grid)
-            time.sleep(0.3)
-
-    def can_place_left(self, r, c, visited, tiles_pair):
-        if self.is_valid(r, c - 1) and visited[r][c - 1] != -1:
-            second_tile_id = visited[r][c - 1]
-            matching_orientations = tiles_pair.get(second_tile_id).orientations
-            orientation_id = 0
-            if self.tile_id != second_tile_id:
-                for o1 in self.orientations:
-                    orientation_id += 1
-                    if __DEBUG__:
-                        self.debug_(orientation_id, visited, tiles_pair, [r, c])
-                    for o2 in matching_orientations:
-                        if o1.get("left") == o2.get("right"):
-                            return True
+    def can_place_right(self, r, c, R, C, visited):
+        if self.is_valid(r, c - 1, R, C) and visited[r][c - 1] is not None:
+            second_tile = visited[r][c - 1]
+            if self.tile_id != second_tile.tile_id:
+                if self.orientations.get(
+                    "left"
+                ) == second_tile.orientations.get("right"):
+                    return True
         return False
 
-    def can_place_top(self, r, c, visited, tiles_pair):
-        if self.is_valid(r - 1, c) and visited[r - 1][c] != -1:
-            second_tile_id = visited[r - 1][c]
-            matching_orientations = tiles_pair.get(second_tile_id).orientations
-            orientation_id = 0
-            if self.tile_id != second_tile_id:
-                for o1 in self.orientations:
-                    orientation_id += 1
-                    if __DEBUG__:
-                        self.debug_(orientation_id, visited, tiles_pair, [r, c])
-                    for o2 in matching_orientations:
-                        if o1.get("up") == o2.get("down"):
-                            return True
-
+    def can_place_bottom(self, r, c, R, C, visited):
+        if self.is_valid(r - 1, c, R, C) and visited[r - 1][c] is not None:
+            second_tile = visited[r - 1][c]
+            if self.tile_id != second_tile.tile_id:
+                if self.orientations.get("up") == second_tile.orientations.get(
+                    "down"
+                ):
+                    return True
         return False
 
-    def is_valid(self, r, c):
-        if r >= 0 and r < 3 and c >= 0 and c < 3:
+    def is_valid(self, r, c, R, C):
+        if r >= 0 and r < R and c >= 0 and c < R:
             return True
         return False
 
 
 class Board:
-    def __init__(self, tiles_pair):
-        self.visited = [[-1] * 3 for _ in range(3)]
-        self.R = 3
-        self.C = 3
-        self.filled = 0
-        self.tiles_pair = tiles_pair
+    def __init__(self, file_name):
+        self.visited = None
+        self.R = -1
+        self.C = -1
+        self.tiles = []
+        self.tiles_count = 0
+        self.read_layout(file_name)
+        self.init_board()
+
+    def read_layout(self, file_name):
+        try:
+            f = open(file_name, "r")
+            tile_id, grid_lines, tile = None, [], None
+            for line in f.readlines():
+                if line == "\n":
+                    continue
+                if ":" in line:
+                    if tile_id is not None:
+                        for flips in range(2):
+                            for rotation in range(4):
+                                tile = Tile(
+                                    tile_id, int(tile_id) + self.tiles_count
+                                )
+                                tile.update(grid_lines)
+                                tile.corners.update(
+                                    tile.update_corners(grid_lines)
+                                )
+                                self.tiles.append(tile)
+                                grid_lines = tile.rotate90()
+                                self.tiles_count += 1
+
+                            grid_lines = tile.flip_v()
+                        grid_lines = []
+                    tile_id = line.split(":")[0].split(" ")[1]
+                else:
+                    grid_lines.append(line.strip())
+
+            for flips in range(2):
+                for rotation in range(4):
+                    tile = Tile(tile_id, int(tile_id) + self.tiles_count)
+                    tile.update(grid_lines)
+                    tile.corners.update(tile.update_corners(grid_lines))
+                    self.tiles.append(tile)
+                    grid_lines = tile.rotate90()
+                    self.tiles_count += 1
+                grid_lines = tile.flip_v()
+
+        except FileNotFoundError as error:
+            print(f"File not found error {error}")
+
+    def init_board(self):
+        self.R, self.C = int(sqrt(self.tiles_count * 0.125)), int(
+            sqrt(self.tiles_count * 0.125)
+        )
+        print(f"R: {self.R}, C: {self.C}")
+        self.visited = [[None] * self.C for _ in range(self.R)]
 
     @property
     def layout(self):
         return self.visited
-
-    @property
-    def tiles(self):
-        return self.tiles_pair
 
     def is_valid(self, r, c):
         if r >= 0 and r < self.R and c >= 0 and c < self.C:
@@ -230,46 +193,56 @@ class Board:
     def search_monster(self, pattern):
         pass
 
-    def search_all(self):
-        center_configurations = self.solve_other(4, False)
-        for tile in center_configurations:
-            tile_id = tile.get("node")
-            tile_edges = tile.get("edges")
-
     # probably needed for the second part
 
-    def solve(self, r1, c1):
-        def solve_r(r, c, running_tile_id=-1, checked=set(), cnt=0):
-            R, C = 3, 3
-            # print(f"solve({r,c})")
-            print(f"total recursive calls {cnt}")
-            if r == R:
-                return
-            for tile_id, tile in self.tiles_pair.items():
+    def solve_r(self, r, c, checked=set(), cnt=0):
+        R, C = self.R, self.C
+        if r == R:
+            # print(f"total recursive calls {cnt}")
+            print("simulation complete")
+            print(
+                self.visited[0][0].tile_id,
+                self.visited[0][C - 1].tile_id,
+                self.visited[R - 1][0].tile_id,
+                self.visited[R - 1][C - 1].tile_id,
+            )
+            answer = (
+                int(self.visited[0][0].tile_id)
+                * int(self.visited[0][C - 1].tile_id)
+                * int(self.visited[R - 1][0].tile_id)
+                * int(self.visited[R - 1][C - 1].tile_id)
+            )
+            print(f"answer {answer}")
+            exit(0)
+        for tile in self.tiles:
+            tile_id = tile.tile_id
+            if not tile_id in checked:
+                if r > 0 and not tile.can_place_bottom(
+                    r, c, self.R, self.C, self.visited
+                ):
+                    continue
+                if c > 0 and not tile.can_place_right(
+                    r, c, self.R, self.C, self.visited
+                ):
+                    continue
 
-                if not tile_id in checked:
-                    running_tile_id = tile_id
-                    if r > 0 and not tile.can_place_top(
-                        r, c, self.visited, self.tiles_pair
-                    ):
-                        continue
-                    if c > 0 and not tile.can_place_left(
-                        r, c, self.visited, self.tiles_pair
-                    ):
-                        continue
+                self.visited[r][c] = tile
+                checked.add(tile_id)
 
-                    self.visited[r][c] = tile_id
-                    checked.add(tile_id)
+                if c == C - 1:
+                    self.solve_r(r + 1, 0, checked, cnt + 1)
+                else:
+                    self.solve_r(r, c + 1, checked, cnt + 1)
+                checked.remove(tile_id)
 
-                    if c == C - 1:
-                        nr, nc = r + 1, 0
-                        solve_r(nr, nc, running_tile_id, checked, cnt + 1)
-                    else:
-                        nr, nc = r, c + 1
-                        solve_r(nr, nc, running_tile_id, checked, cnt + 1)
-                    checked.discard(tile_id)
-
-        solve_r(0, 0)
+    def __call__(self):
+        try:
+            print(f"solving puzzle now")
+            if __SOLVE__:
+                self.solve_r(0, 0)
+        except Exception as ex:
+            print(f"Error solving the puzzle {ex}")
+            print(ex.__traceback__())
 
 
 def fill_grid_by_pos(grid, data, pos):
@@ -335,38 +308,13 @@ def fill_grid_generic(visited, tiles: dict):
     # print_grid(grid, Colors.OKCYAN)
 
 
+__SOLVE__ = True
+
+
 def read_input():
     try:
-        f = open("day_20_small.in", "r")
-        tiles = []
-        tiles_pair = {}
-        tile_id, grid_lines, tile, board = None, [], None, None
-        for line in f.readlines():
-            if line == "\n":
-                continue
-
-            if ":" in line:
-                if tile_id is not None:
-                    tile.update(grid_lines)
-                    tiles_pair[tile_id] = tile
-                    grid_lines = []
-                tile_id = line.split(":")[0].split(" ")[1]
-                tile = Tile(tile_id)
-                tiles_pair[tile_id] = None
-            else:
-                grid_lines.append(line.strip())
-
-        # fill in the last tile
-        tile = Tile(tile_id)
-        tile.update(grid_lines)
-        tiles_pair[tile_id] = tile
-
-        if tiles is not None:
-            board = Board(tiles_pair)
-
-        board.solve(0, 0)
-        print(board.layout)
-        # print_grid_generic(board.layout, board.tiles)
+        board = Board("day_20.in")
+        board()
     except FileNotFoundError as file_not_found_error:
         print(f"file not found error {file_not_found_error}")
     except Exception as exception:
