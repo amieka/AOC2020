@@ -3,6 +3,7 @@ import sys
 import curses
 import time
 import threading
+import traceback
 from enum import Enum
 from functools import lru_cache
 from math import sqrt
@@ -29,10 +30,31 @@ class Colors:
     RED = "\031[47m"
     LGRAY = "\033[37m"
     ORANGE = "\033[33m"
+    BITSET = [153, 153, 153]
+    BITUNSET = [176, 188, 188]
+    BITSETSEAGREEN = [51, 127, 125]
+    BITUNSETGREEN = [204, 255, 253]
 
 
-def ColoredText(color: Colors, text: str):
-    return f"{color}{text}{Colors.ENDC}"
+def RGBToANSI(r, g, b):
+    if r == g and g == b:
+        if r < 8:
+            return 16
+        if r > 248:
+            return 231
+        return round(((r - 8) / 247) * 24) + 232
+    return (
+        16
+        + (36 * round(r / 255 * 5))
+        + (6 * round(g / 255 * 5))
+        + round(b / 255 * 5)
+    )
+
+
+def ColoredText(rgb=[255, 255, 255]):
+    return "\x1b[48;5;{}m \x1b[0m".format(
+        int(RGBToANSI(rgb[0], rgb[1], rgb[2]))
+    )
 
 
 class Tile:
@@ -124,6 +146,8 @@ class Board:
         self.visited = None
         self.R = -1
         self.C = -1
+        self.current_r = 0
+        self.current_c = 0
         self.tiles = []
         self.tiles_count = 0
         self.filled_grid = None
@@ -131,6 +155,7 @@ class Board:
         # holds the resized board as a Tile, so that
         # it can be rotated and flipped
         self.resized_grid = Tile("-1", "-1")
+        self.block_size = 10
         self.read_layout(file_name)
         self.init_board()
         self.m_pattern = []
@@ -143,8 +168,6 @@ class Board:
                 # expensive copy
                 self.visited[r][c] = tile
         self.fill_grid(self.visited, False, 8, True, False)
-        self.print_grid(self.filled_grid)
-        # print(len(self.filled_grid), len(self.filled_grid[0]))
         self.resized_grid.update(self.filled_grid)
 
     def read_layout(self, file_name):
@@ -251,8 +274,7 @@ class Board:
                                 and pattern_count[1] == 8
                                 and pattern_count[2] == 6
                             ):
-                                if __DEBUG__:
-                                    self.print_grid(p_)
+
                                 sea_monsters += 1
 
                         if raw_data[r][c] == "#":
@@ -278,18 +300,28 @@ class Board:
             print(f"error finding file {error}")
 
     # probably needed for the second part
-    def print_grid(self, grid):
+    def print_grid(self, grid, full_print=False):
         if not grid:
             raise Exception("Not a valid grid row")
+        if not full_print:
+            for row in range((self.current_r + 1) * self.block_size):
+                cols = []
+                for col in range((self.current_c + 1) * self.block_size):
+                    cols.append(grid[row][col])
+                print("".join(cols))
+            return
+
         for row in grid:
             if not row:
                 continue
             if isinstance(row, list):
-                print(f"{''.join(row)}")
+                print("".join(row))
             else:
-                print(f"{row}")
+                print(row)
 
-    def fill_grid_by_pos(self, grid, data, pos, colorize=True):
+    def fill_grid_by_pos(
+        self, grid, data, pos, colorize=True, color_corners=False
+    ):
         r_start, r_end, c_start, c_end, content_length = (
             pos[0],
             pos[1],
@@ -301,38 +333,55 @@ class Board:
         for r in range(r_start, r_end):
             j = 0
             for c in range(c_start, c_end):
-                # first row
-                if i == 0 and j in range(0, content_length):
+                if data[i][j] == "#":
                     grid[r][c] = (
-                        ColoredText(Colors.ORANGE, data[i][j])
-                        if colorize
-                        else data[i][j]
-                    )
-
-                elif i == content_length - 1 and j in range(0, content_length):
-                    grid[r][c] = (
-                        ColoredText(Colors.ORANGE, data[i][j])
-                        if colorize
-                        else data[i][j]
-                    )
-                elif j == 0 and i in range(0, content_length):
-                    grid[r][c] = (
-                        ColoredText(Colors.ORANGE, data[i][j])
-                        if colorize
-                        else data[i][j]
-                    )
-                elif j == content_length - 1 and i in range(0, content_length):
-                    grid[r][c] = (
-                        ColoredText(Colors.ORANGE, data[i][j])
+                        ColoredText(Colors.BITSETSEAGREEN)
                         if colorize
                         else data[i][j]
                     )
                 else:
                     grid[r][c] = (
-                        ColoredText(Colors.LGRAY, data[i][j])
+                        ColoredText(Colors.BITUNSETGREEN)
                         if colorize
                         else data[i][j]
                     )
+                # color corners if set
+                if colorize and color_corners:
+                    if i == 0 and j in range(0, content_length):
+                        grid[r][c] = (
+                            ColoredText([102, 102, 102])
+                            if colorize
+                            else data[i][j]
+                        )
+
+                    elif i == content_length - 1 and j in range(
+                        0, content_length
+                    ):
+                        grid[r][c] = (
+                            ColoredText([102, 102, 102])
+                            if colorize
+                            else data[i][j]
+                        )
+                    elif j == 0 and i in range(0, content_length):
+                        grid[r][c] = (
+                            ColoredText([102, 102, 102])
+                            if colorize
+                            else data[i][j]
+                        )
+                    elif j == content_length - 1 and i in range(
+                        0, content_length
+                    ):
+                        grid[r][c] = (
+                            ColoredText([102, 102, 102])
+                            if colorize
+                            else data[i][j]
+                        )
+                    else:
+                        grid[r][c] = (
+                            ColoredText([102, 102, 102])
+                            if colorize
+                            else data[i][j]
+                        )
                 j += 1
             i += 1
 
@@ -354,7 +403,9 @@ class Board:
         trimmed_corners=False,
         colorize=True,
     ):
-        grid = [["."] * self.C * block_size for _ in range(self.R * block_size)]
+        grid = [
+            ["."] * (self.C) * block_size for _ in range((self.R) * block_size)
+        ]
         self.raw_grid = [
             ["."] * self.C * block_size for _ in range(self.R * block_size)
         ]
@@ -377,14 +428,17 @@ class Board:
                 self.fill_grid_by_pos(
                     grid, raw_data, [start_r, end_r, start_c, end_c], colorize
                 )
+                self.fill_grid_by_pos(
+                    grid,
+                    raw_data,
+                    [start_r, end_r, start_c, end_c],
+                    colorize,
+                )
                 start_c += block_size
             start_r += block_size
 
         # memory inefficient
         self.filled_grid = grid
-
-        if __DEBUG__:
-            self.print_grid(grid)
 
     def debug_print(self, data, r, c):
         self.fill_grid(self.visited)
@@ -403,19 +457,15 @@ class Board:
         """
         print("\033[2J\033[1;1H")
         self.print_grid(self.filled_grid)
-        time.sleep(0.3)
+        time.sleep(0.1)
+
+    def reset_state(self):
+        self.current_r = self.R
+        self.current_c = self.C
 
     def solve_r(self, r, c, checked=set(), cnt=0):
         R, C = self.R, self.C
         if r == R:
-            print(f"total recursive calls {cnt}")
-            print("simulation complete")
-            print(
-                self.visited[0][0].tile_id,
-                self.visited[0][C - 1].tile_id,
-                self.visited[R - 1][0].tile_id,
-                self.visited[R - 1][C - 1].tile_id,
-            )
             answer = (
                 int(self.visited[0][0].tile_id)
                 * int(self.visited[0][C - 1].tile_id)
@@ -423,16 +473,22 @@ class Board:
                 * int(self.visited[R - 1][C - 1].tile_id)
             )
             print(f"answer {answer}")
+            # reset state
+            self.current_r, self.current_c = 0, 0
+            print("searching for a sea monster")
             self.fill_grid(self.visited, True)
             self.resize_board()
-            sea_monsters = self.search_monster()
-            print(f"total number of sea monsters {sea_monsters}")
+            roughness = self.search_monster()
+            print(f"roughness {roughness}")
             exit(0)
+
         for tile in self.tiles:
             tile_id = tile.tile_id
             if not tile_id in checked:
                 tile_data = tile.raw_data
                 if __DEBUG__:
+                    self.current_r = r
+                    self.current_c = c
                     self.debug_print(tile_data, r, c)
                 if r > 0 and not tile.can_place_bottom(
                     r, c, self.R, self.C, self.visited
@@ -458,19 +514,20 @@ class Board:
                 return
             print(f"solving puzzle now")
             self.solve_r(0, 0)
+
         except Exception as ex:
             print(f"Error solving the puzzle {ex}")
-            print(ex.__traceback__())
+            traceback.print_exc(file=sys.stdout)
 
 
 # Global Program flags
 __SOLVE__ = True
-__DEBUG__ = False
+__DEBUG__ = True
 
 
 def read_input():
     try:
-        board = Board("day_20.in")
+        board = Board("day_20_small.in")
         board()
     except FileNotFoundError as file_not_found_error:
         print(f"file not found error {file_not_found_error}")
