@@ -46,15 +46,15 @@ class Tile:
         ]
         self.corners = {}
 
+    def update(self, data):
+        self.raw_data = data
+
     def trim_corners(self):
         block_size = 10
         data = self.raw_data
         for r in range(1, block_size - 1):
             for c in range(1, block_size - 1):
                 self.trimmed_data[r - 1][c - 1] = data[r][c]
-
-    def update(self, data):
-        self.raw_data = data
 
     @property
     def orientations(self):
@@ -127,8 +127,25 @@ class Board:
         self.tiles = []
         self.tiles_count = 0
         self.filled_grid = None
+        self.raw_grid = None
+        # holds the resized board as a Tile, so that
+        # it can be rotated and flipped
+        self.resized_grid = Tile("-1", "-1")
         self.read_layout(file_name)
         self.init_board()
+        self.m_pattern = []
+
+    def resize_board(self):
+        for r in range(self.R):
+            for c in range(self.C):
+                tile = self.visited[r][c]
+                tile.trim_corners()
+                # expensive copy
+                self.visited[r][c] = tile
+        self.fill_grid(self.visited, False, 8, True, False)
+        self.print_grid(self.filled_grid)
+        # print(len(self.filled_grid), len(self.filled_grid[0]))
+        self.resized_grid.update(self.filled_grid)
 
     def read_layout(self, file_name):
         try:
@@ -158,6 +175,7 @@ class Board:
                 else:
                     grid_lines.append(line.strip())
 
+            # take care of the last tile
             for flips in range(2):
                 for rotation in range(4):
                     tile = Tile(tile_id, int(tile_id) + self.tiles_count)
@@ -182,54 +200,96 @@ class Board:
     def layout(self):
         return self.visited
 
-    def is_valid(self, r, c):
-        if r >= 0 and r < self.R and c >= 0 and c < self.C:
+    def is_valid(self, r, c, R, C):
+        if r >= 0 and r < R and c >= 0 and c < C:
             return True
         return False
 
-    def search_monster(self, pattern: list):
-        raise NotImplementedError
+    def search_monster(self):
+        try:
+            m_pattern = [
+                "..................#.",
+                "#....##....##....###",
+                ".#..#..#..#..#..#...",
+            ]
+            sr, sc, R_, C_ = (
+                3,
+                20,
+                len(self.resized_grid.raw_data),
+                len(self.resized_grid.raw_data),
+            )
 
-    def remove_rows_and_colos(self, pos: list, data: list):
-        r_start, r_end, c_start, c_end, block_size = (
-            pos[0],
-            pos[1],
-            pos[2],
-            pos[3],
-            10,
-        )
-        trimmed_size = block_size - 2
-        grid = [["."] * trimmed_size for _ in range(trimmed_size)]
-        i = 0
-        for r in range(r_start, r_end):
-            j = 0
-            for c in range(c_start, c_end):
-                # first row
-                if i == 0 and j in range(0, block_size):
-                    continue
-                elif i == block_size - 1 and j in range(0, block_size):
-                    continue
-                elif j == 0 and i in range(0, block_size):
-                    continue
-                elif j == block_size - 1 and i in range(0, block_size):
-                    continue
-                else:
-                    grid[r][c] = data[i][j]
+            # convert raw grid in list of strings
+            total_roughness = 0
+            idx, grid_lines = 0, self.resized_grid.raw_data
 
-                j += 1
-            i += 1
+            def compute_roughness(raw_data):
+                grid_, total_roughness, sea_monsters = raw_data, 0, 0
+                for r in range(R_):
+                    p_ = ["." for _ in range(sr)]
+                    for c in range(C_):
+                        pattern_count = [0 for _ in range(sr)]
+                        for l in range(sr):
+                            p1_, num_matches = ["." for _ in range(sc)], 0
+                            for m in range(sc):
+                                if self.is_valid(r + l, c + m, R_, C_):
+                                    if (
+                                        m_pattern[l][m] == "#"
+                                        and raw_data[r + l][c + m] == "#"
+                                    ):
+                                        p1_[m] = "O"
+                                        num_matches += 1
+
+                            # dont like hard coding the numbers
+                            if num_matches in [1, 6, 8]:
+                                pattern_count[l] = num_matches
+                                p_[l] = "".join(p1_)
+
+                            if (
+                                len(pattern_count) == 3
+                                and pattern_count[0] == 1
+                                and pattern_count[1] == 8
+                                and pattern_count[2] == 6
+                            ):
+                                if __DEBUG__:
+                                    self.print_grid(p_)
+                                sea_monsters += 1
+
+                        if raw_data[r][c] == "#":
+                            total_roughness += 1
+                return (sea_monsters, total_roughness)
+
+            while True:
+                for f in range(2):
+                    for r in range(4):
+                        # check for a sea monster after orienting the grid
+                        seamonsters, total_roughness = compute_roughness(
+                            grid_lines
+                        )
+                        if seamonsters > 0:
+                            return total_roughness - seamonsters * 15
+                        grid_lines = self.resized_grid.rotate90()
+                        self.resized_grid.update(grid_lines)
+
+                    grid_lines = self.resized_grid.flip_v()
+                    self.resized_grid.update(grid_lines)
+
+        except FileNotFoundError as error:
+            print(f"error finding file {error}")
 
     # probably needed for the second part
     def print_grid(self, grid):
         if not grid:
             raise Exception("Not a valid grid row")
         for row in grid:
+            if not row:
+                continue
             if isinstance(row, list):
                 print(f"{''.join(row)}")
             else:
                 print(f"{row}")
 
-    def fill_grid_by_pos(self, grid, data, pos):
+    def fill_grid_by_pos(self, grid, data, pos, colorize=True):
         r_start, r_end, c_start, c_end, content_length = (
             pos[0],
             pos[1],
@@ -243,16 +303,36 @@ class Board:
             for c in range(c_start, c_end):
                 # first row
                 if i == 0 and j in range(0, content_length):
-                    grid[r][c] = ColoredText(Colors.ORANGE, data[i][j])
-                elif i == content_length - 1 and j in range(0, content_length):
-                    grid[r][c] = ColoredText(Colors.ORANGE, data[i][j])
-                elif j == 0 and i in range(0, content_length):
-                    grid[r][c] = ColoredText(Colors.ORANGE, data[i][j])
-                elif j == content_length - 1 and i in range(0, content_length):
-                    grid[r][c] = ColoredText(Colors.ORANGE, data[i][j])
-                else:
-                    grid[r][c] = ColoredText(Colors.LGRAY, data[i][j])
+                    grid[r][c] = (
+                        ColoredText(Colors.ORANGE, data[i][j])
+                        if colorize
+                        else data[i][j]
+                    )
 
+                elif i == content_length - 1 and j in range(0, content_length):
+                    grid[r][c] = (
+                        ColoredText(Colors.ORANGE, data[i][j])
+                        if colorize
+                        else data[i][j]
+                    )
+                elif j == 0 and i in range(0, content_length):
+                    grid[r][c] = (
+                        ColoredText(Colors.ORANGE, data[i][j])
+                        if colorize
+                        else data[i][j]
+                    )
+                elif j == content_length - 1 and i in range(0, content_length):
+                    grid[r][c] = (
+                        ColoredText(Colors.ORANGE, data[i][j])
+                        if colorize
+                        else data[i][j]
+                    )
+                else:
+                    grid[r][c] = (
+                        ColoredText(Colors.LGRAY, data[i][j])
+                        if colorize
+                        else data[i][j]
+                    )
                 j += 1
             i += 1
 
@@ -266,21 +346,36 @@ class Board:
             ret.append("".join(cols))
         return ret
 
-    def fill_grid(self, visited, should_print=False):
-        block_size = 10
+    def fill_grid(
+        self,
+        visited,
+        should_print=False,
+        block_size=10,
+        trimmed_corners=False,
+        colorize=True,
+    ):
         grid = [["."] * self.C * block_size for _ in range(self.R * block_size)]
+        self.raw_grid = [
+            ["."] * self.C * block_size for _ in range(self.R * block_size)
+        ]
         grid_size = block_size * self.R  # its a square grid
         start_r = 0
+        raw_data = self.default_data()
         for row in range(self.R):
             start_c = 0
             for col in range(self.C):
                 tile = visited[row][col]
-                raw_data = (
-                    tile.raw_data if tile is not None else self.default_data()
-                )
+                if not tile:
+                    continue
+                if tile is not None:
+                    if trimmed_corners and tile.trimmed_data is not None:
+                        raw_data = tile.trimmed_data
+                    else:
+                        raw_data = tile.raw_data
+
                 end_r, end_c = start_r + block_size, start_c + block_size
                 self.fill_grid_by_pos(
-                    grid, raw_data, [start_r, end_r, start_c, end_c]
+                    grid, raw_data, [start_r, end_r, start_c, end_c], colorize
                 )
                 start_c += block_size
             start_r += block_size
@@ -288,18 +383,16 @@ class Board:
         # memory inefficient
         self.filled_grid = grid
 
-        if should_print:
+        if __DEBUG__:
             self.print_grid(grid)
 
     def debug_print(self, data, r, c):
-        if not __DEBUG__:
-            return 
         self.fill_grid(self.visited)
         block_size = 10
         start_r, start_c = r * block_size, c * block_size
         end_r, end_c = start_r + block_size, start_c + block_size
         self.fill_grid_by_pos(
-            self.filled_grid, data, [start_r, end_r, start_c, end_c]
+            self.filled_grid, data, [start_r, end_r, start_c, end_c], True
         )
         """
             # Clears the console
@@ -310,7 +403,7 @@ class Board:
         """
         print("\033[2J\033[1;1H")
         self.print_grid(self.filled_grid)
-        time.sleep(0.1)
+        time.sleep(0.3)
 
     def solve_r(self, r, c, checked=set(), cnt=0):
         R, C = self.R, self.C
@@ -331,12 +424,16 @@ class Board:
             )
             print(f"answer {answer}")
             self.fill_grid(self.visited, True)
+            self.resize_board()
+            sea_monsters = self.search_monster()
+            print(f"total number of sea monsters {sea_monsters}")
             exit(0)
         for tile in self.tiles:
             tile_id = tile.tile_id
             if not tile_id in checked:
                 tile_data = tile.raw_data
-                self.debug_print(tile_data, r, c)
+                if __DEBUG__:
+                    self.debug_print(tile_data, r, c)
                 if r > 0 and not tile.can_place_bottom(
                     r, c, self.R, self.C, self.visited
                 ):
@@ -357,9 +454,10 @@ class Board:
 
     def __call__(self):
         try:
+            if not __SOLVE__:
+                return
             print(f"solving puzzle now")
-            if __SOLVE__:
-                self.solve_r(0, 0)
+            self.solve_r(0, 0)
         except Exception as ex:
             print(f"Error solving the puzzle {ex}")
             print(ex.__traceback__())
@@ -372,7 +470,7 @@ __DEBUG__ = False
 
 def read_input():
     try:
-        board = Board("day_20_small.in")
+        board = Board("day_20.in")
         board()
     except FileNotFoundError as file_not_found_error:
         print(f"file not found error {file_not_found_error}")
